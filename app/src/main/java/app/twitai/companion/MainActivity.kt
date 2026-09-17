@@ -14,6 +14,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var auth: AuthManager
 
+    private var loginInProgress = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -28,6 +30,10 @@ class MainActivity : ComponentActivity() {
 
         binding.loginButton.setOnClickListener {
 
+            if (loginInProgress) return@setOnClickListener
+
+            loginInProgress = true
+
             binding.loginButton.isEnabled = false
             binding.statusText.text = "Opening Google sign-in..."
 
@@ -35,17 +41,19 @@ class MainActivity : ComponentActivity() {
 
                 val result = auth.signIn(this@MainActivity)
 
+                loginInProgress = false
                 binding.loginButton.isEnabled = true
 
                 val error = result.exceptionOrNull()
 
                 if (error != null) {
 
-                    val message =
-                        error.message ?: error.javaClass.name
+                    val fullError =
+                        error.message
+                            ?: error.javaClass.name
 
                     binding.statusText.text =
-                        "LOGIN ERROR\n\n$message"
+                        "LOGIN ERROR:\n\n$fullError"
 
                     Toast.makeText(
                         this@MainActivity,
@@ -77,7 +85,10 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
 
-        if (::auth.isInitialized) {
+        // IMPORTANT:
+        // Do not refresh the UI while the Google login flow
+        // is returning to this activity.
+        if (::auth.isInitialized && !loginInProgress) {
             refreshUi()
         }
     }
