@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Twit AI</string>
+    <string name="accessibility_description">Shows a Twit AI action for selected text in supported apps.</string>
+</resources>
