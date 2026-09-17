@@ -1,130 +1,104 @@
 package app.twitai.companion
 
-import android.app.Activity
-import android.content.Context
-import android.util.Base64
-import androidx.credentials.CredentialManager
-import androidx.credentials.GetCredentialRequest
-import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
-import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.GoogleAuthProvider
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withContext
-import java.security.SecureRandom
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
+import android.content.Intent
+import android.os.Bundle
+import android.provider.Settings
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.lifecycle.lifecycleScope
+import app.twitai.companion.databinding.ActivityMainBinding
+import kotlinx.coroutines.launch
 
-class AuthManager(private val context: Context) {
+class MainActivity : ComponentActivity() {
 
-    private val auth = FirebaseAuth.getInstance()
+    private lateinit var binding: ActivityMainBinding
+    private lateinit var auth: AuthManager
 
-    fun isLoggedIn(): Boolean {
-        return auth.currentUser != null
-    }
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
 
-    fun email(): String? {
-        return auth.currentUser?.email
-    }
+        FirebaseBootstrap.init(this)
 
-    suspend fun signIn(activity: Activity): Result<Unit> =
-        withContext(Dispatchers.Main) {
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
 
-            try {
+        auth = AuthManager(this)
 
-                val credentialManager =
-                    CredentialManager.create(activity)
+        refreshUi()
 
-                val webClientId =
-                    context.getString(R.string.default_web_client_id)
+        binding.loginButton.setOnClickListener {
 
-                val nonce = generateSecureRandomNonce()
+            binding.loginButton.isEnabled = false
+            binding.statusText.text = "Opening Google sign-in..."
 
-                val googleOption =
-                    GetSignInWithGoogleOption.Builder(
-                        serverClientId = webClientId
-                    )
-                        .setNonce(nonce)
-                        .build()
+            lifecycleScope.launch {
 
-                val request =
-                    GetCredentialRequest.Builder()
-                        .addCredentialOption(googleOption)
-                        .build()
+                val result = auth.signIn(this@MainActivity)
 
-                val result =
-                    credentialManager.getCredential(
-                        context = activity,
-                        request = request
-                    )
+                binding.loginButton.isEnabled = true
 
-                val googleCredential =
-                    GoogleIdTokenCredential.createFrom(
-                        result.credential.data
-                    )
+                val error = result.exceptionOrNull()
 
-                val firebaseCredential =
-                    GoogleAuthProvider.getCredential(
-                        googleCredential.idToken,
-                        null
-                    )
+                if (error != null) {
 
-                auth.signInWithCredential(firebaseCredential)
-                    .awaitUnit()
+                    val message =
+                        error.message ?: error.javaClass.name
 
-                Result.success(Unit)
+                    binding.statusText.text =
+                        "LOGIN ERROR\n\n$message"
 
-            } catch (e: Exception) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Google login failed",
+                        Toast.LENGTH_LONG
+                    ).show()
 
-                Result.failure(e)
+                } else {
+
+                    binding.statusText.text =
+                        "Signed in as ${auth.email() ?: "Google account"}"
+
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Google login successful",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
             }
         }
 
-    fun signOut() {
-        auth.signOut()
+        binding.accessibilityButton.setOnClickListener {
+            startActivity(
+                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            )
+        }
     }
 
-    private fun generateSecureRandomNonce(): String {
+    override fun onResume() {
+        super.onResume()
 
-        val randomBytes = ByteArray(32)
-
-        SecureRandom().nextBytes(randomBytes)
-
-        return Base64.encodeToString(
-            randomBytes,
-            Base64.NO_WRAP or
-                Base64.URL_SAFE or
-                Base64.NO_PADDING
-        )
+        if (::auth.isInitialized) {
+            refreshUi()
+        }
     }
-}
 
-private suspend fun
-    com.google.android.gms.tasks.Task<com.google.firebase.auth.AuthResult>
-    .awaitUnit() {
+    private fun refreshUi() {
 
-    suspendCancellableCoroutine<Unit> { continuation ->
+        if (auth.isLoggedIn()) {
 
-        addOnSuccessListener {
+            binding.statusText.text =
+                "Signed in as ${auth.email() ?: "Google account"}"
 
-            if (continuation.isActive) {
-                continuation.resume(Unit)
-            }
-        }
+            binding.loginButton.text =
+                "Sign in with another account"
 
-        addOnFailureListener { exception ->
+        } else {
 
-            if (continuation.isActive) {
-                continuation.resumeWithException(exception)
-            }
-        }
+            binding.statusText.text =
+                "Not signed in"
 
-        addOnCanceledListener {
-
-            if (continuation.isActive) {
-                continuation.cancel()
-            }
+            binding.loginButton.text =
+                "Sign in with Google"
         }
     }
 }
