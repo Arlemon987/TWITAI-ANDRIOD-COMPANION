@@ -4,15 +4,14 @@ import android.app.Activity
 import android.content.Context
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
-import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
+import java.security.SecureRandom
+import java.util.Base64
 
 class AuthManager(private val context: Context) {
 
@@ -30,30 +29,60 @@ class AuthManager(private val context: Context) {
         withContext(Dispatchers.Main) {
 
             try {
-                val credentialManager = CredentialManager.create(context)
 
-                val webClientId =
-                    context.getString(R.string.default_web_client_id)
+                val credentialManager =
+                    CredentialManager.create(activity)
 
-                val googleOption = GetGoogleIdOption.Builder()
-                    .setServerClientId(webClientId)
-                    .setFilterByAuthorizedAccounts(false)
-                    .setAutoSelectEnabled(false)
-                    .build()
+                /*
+                 * Explicit Google Sign-In button flow.
+                 *
+                 * This is different from GetGoogleIdOption.
+                 * Google recommends GetSignInWithGoogleOption
+                 * for a dedicated "Sign in with Google" button.
+                 */
 
-                val request = GetCredentialRequest.Builder()
-                    .addCredentialOption(googleOption)
-                    .build()
+                val googleOption =
+                    GetSignInWithGoogleOption.Builder(
+                        serverClientId = Config.GOOGLE_WEB_CLIENT_ID
+                    )
+                        .setNonce(generateSecureRandomNonce())
+                        .build()
 
-                val result = credentialManager.getCredential(
-                    activity,
-                    request
-                )
+                /*
+                 * IMPORTANT:
+                 * The explicit Google button flow must contain
+                 * exactly one GetSignInWithGoogleOption.
+                 */
+
+                val request =
+                    GetCredentialRequest.Builder()
+                        .addCredentialOption(googleOption)
+                        .build()
+
+                /*
+                 * Use the Activity as the context so Android can
+                 * correctly launch the Google system UI.
+                 */
+
+                val result =
+                    credentialManager.getCredential(
+                        context = activity,
+                        request = request
+                    )
+
+                /*
+                 * Convert the returned credential into a
+                 * Google ID token credential.
+                 */
 
                 val googleCredential =
                     GoogleIdTokenCredential.createFrom(
                         result.credential.data
                     )
+
+                /*
+                 * Convert Google ID token into Firebase credential.
+                 */
 
                 val firebaseCredential =
                     GoogleAuthProvider.getCredential(
@@ -61,11 +90,23 @@ class AuthManager(private val context: Context) {
                         null
                     )
 
-                auth.signInWithCredential(firebaseCredential).awaitUnit()
+                /*
+                 * Sign in to Firebase.
+                 */
+
+                auth.signInWithCredential(
+                    firebaseCredential
+                ).awaitUnit()
 
                 Result.success(Unit)
 
             } catch (e: Exception) {
+
+                /*
+                 * Return the actual error to MainActivity
+                 * so it can be displayed instead of silently
+                 * resetting the screen.
+                 */
 
                 Result.failure(e)
             }
@@ -74,29 +115,35 @@ class AuthManager(private val context: Context) {
     fun signOut() {
         auth.signOut()
     }
+
+    private fun generateSecureRandomNonce(
+        byteLength: Int = 32
+    ): String {
+
+        val randomBytes = ByteArray(byteLength)
+
+        SecureRandom.getInstanceStrong()
+            .nextBytes(randomBytes)
+
+        return Base64.getUrlEncoder()
+            .withoutPadding()
+            .encodeToString(randomBytes)
+    }
 }
 
-private suspend fun com.google.android.gms.tasks.Task<com.google.firebase.auth.AuthResult>.awaitUnit() {
-    suspendCancellableCoroutine<Unit> { continuation ->
+private suspend fun
+com.google.android.gms.tasks.Task<com.google.firebase.auth.AuthResult>.awaitUnit() {
+
+    kotlinx.coroutines.suspendCancellableCoroutine<Unit> { continuation ->
 
         addOnSuccessListener {
-            if (continuation.isActive) {
-                continuation.resume(Unit)
-            }
+            continuation.resume(Unit) {}
         }
 
-        addOnFailureListener { exception ->
-
-            if (continuation.isActive) {
-                continuation.resumeWithException(exception)
-            }
-        }
-
-        addOnCanceledListener {
-
-            if (continuation.isActive) {
-                continuation.cancel()
-            }
+        addOnFailureListener {
+            continuation.resumeWith(
+                Result.failure(it)
+            )
         }
     }
 }
