@@ -41,8 +41,18 @@ class MainActivity : ComponentActivity() {
 
                 if (error != null) {
 
-                    val errorMessage =
-                        error.message ?: error.javaClass.simpleName
+                    val errorMessage = buildString {
+    append(error.javaClass.name)
+    append("\n")
+    append(error.message ?: "No error message")
+
+    error.cause?.let {
+        append("\n\nCAUSE:\n")
+        append(it.javaClass.name)
+        append("\n")
+        append(it.message ?: "No cause message")
+    }
+}
 
                     binding.statusText.text =
                         "Login failed:\n$errorMessage"
