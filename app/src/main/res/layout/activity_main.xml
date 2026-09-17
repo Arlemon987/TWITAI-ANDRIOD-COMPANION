@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+
+<ScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/twit_bg">
@@ -23,23 +25,31 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="Checking..."
+            android:text="Not signed in"
             android:textColor="@color/twit_muted"
             android:textSize="15sp" />
 
         <Button
             android:id="@+id/loginButton"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="56dp"
             android:layout_marginTop="20dp"
-            android:text="Sign in with Google" />
+            android:backgroundTint="#FFFFFF"
+            android:text="Sign in with Google"
+            android:textColor="#000000"
+            android:textSize="16sp"
+            android:textStyle="bold" />
 
         <Button
             android:id="@+id/accessibilityButton"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="56dp"
             android:layout_marginTop="12dp"
-            android:text="Enable X text helper" />
+            android:backgroundTint="#FFFFFF"
+            android:text="Enable X text helper"
+            android:textColor="#000000"
+            android:textSize="16sp"
+            android:textStyle="bold" />
 
         <TextView
             android:id="@+id/instructions"
@@ -50,5 +60,7 @@
             android:textColor="@color/twit_text"
             android:textSize="16sp"
             android:lineSpacingExtra="5dp" />
+
     </LinearLayout>
+
 </ScrollView>
