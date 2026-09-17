@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "444927859336",
+    "project_id": "twit-ai",
+    "storage_bucket": "twit-ai.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:444927859336:android:c15ef8fc07425e0dc79d3d",
+        "android_client_info": {
+          "package_name": "app.twitai.companion"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "444927859336-st9icce51e5nv7h9jgjeib8ljj923lh5.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "app.twitai.companion",
+            "certificate_hash": "6f7bfebf2039a6ac997888d610d6921a093fd1f0"
+          }
+        },
+        {
+          "client_id": "444927859336-06bgi03g0po1q1nsfqksgdsmcrqohfgk.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDadHZptwfad7XKtZC8vBP2udHzxX1uDA8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "444927859336-06bgi03g0po1q1nsfqksgdsmcrqohfgk.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
