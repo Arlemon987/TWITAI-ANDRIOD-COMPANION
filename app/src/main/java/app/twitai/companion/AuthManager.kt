@@ -11,7 +11,7 @@ import com.google.firebase.auth.GoogleAuthProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.security.SecureRandom
-import java.util.Base64
+import android.util.Base64
 
 class AuthManager(private val context: Context) {
 
@@ -33,36 +33,19 @@ class AuthManager(private val context: Context) {
                 val credentialManager =
                     CredentialManager.create(activity)
 
-                /*
-                 * Explicit Google Sign-In button flow.
-                 *
-                 * This is different from GetGoogleIdOption.
-                 * Google recommends GetSignInWithGoogleOption
-                 * for a dedicated "Sign in with Google" button.
-                 */
+                val nonce = generateNonce()
 
                 val googleOption =
                     GetSignInWithGoogleOption.Builder(
-                        serverClientId = Config.GOOGLE_WEB_CLIENT_ID
+                        Config.GOOGLE_WEB_CLIENT_ID
                     )
-                        .setNonce(generateSecureRandomNonce())
+                        .setNonce(nonce)
                         .build()
-
-                /*
-                 * IMPORTANT:
-                 * The explicit Google button flow must contain
-                 * exactly one GetSignInWithGoogleOption.
-                 */
 
                 val request =
                     GetCredentialRequest.Builder()
                         .addCredentialOption(googleOption)
                         .build()
-
-                /*
-                 * Use the Activity as the context so Android can
-                 * correctly launch the Google system UI.
-                 */
 
                 val result =
                     credentialManager.getCredential(
@@ -70,19 +53,10 @@ class AuthManager(private val context: Context) {
                         request = request
                     )
 
-                /*
-                 * Convert the returned credential into a
-                 * Google ID token credential.
-                 */
-
                 val googleCredential =
                     GoogleIdTokenCredential.createFrom(
                         result.credential.data
                     )
-
-                /*
-                 * Convert Google ID token into Firebase credential.
-                 */
 
                 val firebaseCredential =
                     GoogleAuthProvider.getCredential(
@@ -90,23 +64,12 @@ class AuthManager(private val context: Context) {
                         null
                     )
 
-                /*
-                 * Sign in to Firebase.
-                 */
-
-                auth.signInWithCredential(
-                    firebaseCredential
-                ).awaitUnit()
+                auth.signInWithCredential(firebaseCredential)
+                    .awaitUnit()
 
                 Result.success(Unit)
 
             } catch (e: Exception) {
-
-                /*
-                 * Return the actual error to MainActivity
-                 * so it can be displayed instead of silently
-                 * resetting the screen.
-                 */
 
                 Result.failure(e)
             }
@@ -116,32 +79,33 @@ class AuthManager(private val context: Context) {
         auth.signOut()
     }
 
-    private fun generateSecureRandomNonce(
-        byteLength: Int = 32
-    ): String {
+    private fun generateNonce(): String {
 
-        val randomBytes = ByteArray(byteLength)
+        val random = ByteArray(32)
 
-        SecureRandom.getInstanceStrong()
-            .nextBytes(randomBytes)
+        SecureRandom().nextBytes(random)
 
-        return Base64.getUrlEncoder()
-            .withoutPadding()
-            .encodeToString(randomBytes)
+        return Base64.encodeToString(
+            random,
+            Base64.URL_SAFE or
+                    Base64.NO_WRAP or
+                    Base64.NO_PADDING
+        )
     }
 }
 
 private suspend fun
-com.google.android.gms.tasks.Task<com.google.firebase.auth.AuthResult>.awaitUnit() {
+        com.google.android.gms.tasks.Task<com.google.firebase.auth.AuthResult>
+        .awaitUnit() {
 
-    kotlinx.coroutines.suspendCancellableCoroutine<Unit> { continuation ->
+    kotlinx.coroutines.suspendCancellableCoroutine<Unit> { cont ->
 
         addOnSuccessListener {
-            continuation.resume(Unit) {}
+            cont.resume(Unit) {}
         }
 
         addOnFailureListener {
-            continuation.resumeWith(
+            cont.resumeWith(
                 Result.failure(it)
             )
         }
