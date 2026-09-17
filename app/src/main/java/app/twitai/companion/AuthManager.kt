@@ -1,104 +1,124 @@
 package app.twitai.companion
 
-import android.content.Intent
-import android.os.Bundle
-import android.provider.Settings
-import android.widget.Toast
-import androidx.activity.ComponentActivity
-import androidx.lifecycle.lifecycleScope
-import app.twitai.companion.databinding.ActivityMainBinding
-import kotlinx.coroutines.launch
+import android.app.Activity
+import android.content.Context
+import android.util.Base64
+import androidx.credentials.CredentialManager
+import androidx.credentials.GetCredentialRequest
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.GoogleAuthProvider
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.security.SecureRandom
 
-class MainActivity : ComponentActivity() {
+class AuthManager(private val context: Context) {
 
-    private lateinit var binding: ActivityMainBinding
-    private lateinit var auth: AuthManager
+    private val auth = FirebaseAuth.getInstance()
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    fun isLoggedIn(): Boolean {
+        return auth.currentUser != null
+    }
 
-        FirebaseBootstrap.init(this)
+    fun email(): String? {
+        return auth.currentUser?.email
+    }
 
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
+    suspend fun signIn(activity: Activity): Result<Unit> =
+        withContext(Dispatchers.Main) {
 
-        auth = AuthManager(this)
+            try {
 
-        refreshUi()
+                val credentialManager =
+                    CredentialManager.create(activity)
 
-        binding.loginButton.setOnClickListener {
+                val nonce = generateNonce()
 
-            binding.loginButton.isEnabled = false
-            binding.statusText.text = "Opening Google sign-in..."
+                val googleOption =
+                    GetSignInWithGoogleOption.Builder(
+                        Config.GOOGLE_WEB_CLIENT_ID
+                    )
+                        .setNonce(nonce)
+                        .build()
 
-            lifecycleScope.launch {
+                val request =
+                    GetCredentialRequest.Builder()
+                        .addCredentialOption(googleOption)
+                        .build()
 
-                val result = auth.signIn(this@MainActivity)
+                val result =
+                    credentialManager.getCredential(
+                        context = activity,
+                        request = request
+                    )
 
-                binding.loginButton.isEnabled = true
+                val googleCredential =
+                    GoogleIdTokenCredential.createFrom(
+                        result.credential.data
+                    )
 
-                val error = result.exceptionOrNull()
+                val firebaseCredential =
+                    GoogleAuthProvider.getCredential(
+                        googleCredential.idToken,
+                        null
+                    )
 
-                if (error != null) {
+                auth.signInWithCredential(firebaseCredential)
+                    .awaitUnit()
 
-                    val message =
-                        error.message ?: error.javaClass.name
+                Result.success(Unit)
 
-                    binding.statusText.text =
-                        "LOGIN ERROR\n\n$message"
+            } catch (e: Exception) {
 
-                    Toast.makeText(
-                        this@MainActivity,
-                        "Google login failed",
-                        Toast.LENGTH_LONG
-                    ).show()
+                android.util.Log.e(
+                    "TwitAI_AUTH",
+                    "Google login failed",
+                    e
+                )
 
-                } else {
-
-                    binding.statusText.text =
-                        "Signed in as ${auth.email() ?: "Google account"}"
-
-                    Toast.makeText(
-                        this@MainActivity,
-                        "Google login successful",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
+                Result.failure(
+                    Exception(
+                        "${e::class.java.name}\n${e.message ?: "No error message"}",
+                        e
+                    )
+                )
             }
         }
 
-        binding.accessibilityButton.setOnClickListener {
-            startActivity(
-                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+    fun signOut() {
+        auth.signOut()
+    }
+
+    private fun generateNonce(): String {
+
+        val random = ByteArray(32)
+
+        SecureRandom().nextBytes(random)
+
+        return Base64.encodeToString(
+            random,
+            Base64.URL_SAFE or
+                    Base64.NO_WRAP or
+                    Base64.NO_PADDING
+        )
+    }
+}
+
+private suspend fun
+        com.google.android.gms.tasks.Task<com.google.firebase.auth.AuthResult>
+        .awaitUnit() {
+
+    kotlinx.coroutines.suspendCancellableCoroutine<Unit> { cont ->
+
+        addOnSuccessListener {
+            cont.resume(Unit) {}
+        }
+
+        addOnFailureListener {
+            cont.resumeWith(
+                Result.failure(it)
             )
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-
-        if (::auth.isInitialized) {
-            refreshUi()
-        }
-    }
-
-    private fun refreshUi() {
-
-        if (auth.isLoggedIn()) {
-
-            binding.statusText.text =
-                "Signed in as ${auth.email() ?: "Google account"}"
-
-            binding.loginButton.text =
-                "Sign in with another account"
-
-        } else {
-
-            binding.statusText.text =
-                "Not signed in"
-
-            binding.loginButton.text =
-                "Sign in with Google"
         }
     }
 }
