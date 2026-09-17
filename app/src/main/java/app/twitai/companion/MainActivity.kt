@@ -41,25 +41,15 @@ class MainActivity : ComponentActivity() {
 
                 if (error != null) {
 
-                    val errorMessage = buildString {
-    append(error.javaClass.name)
-    append("\n")
-    append(error.message ?: "No error message")
-
-    error.cause?.let {
-        append("\n\nCAUSE:\n")
-        append(it.javaClass.name)
-        append("\n")
-        append(it.message ?: "No cause message")
-    }
-}
+                    val message =
+                        error.message ?: error.javaClass.name
 
                     binding.statusText.text =
-                        "Login failed:\n$errorMessage"
+                        "LOGIN ERROR\n\n$message"
 
                     Toast.makeText(
                         this@MainActivity,
-                        "Google login failed: $errorMessage",
+                        "Google login failed",
                         Toast.LENGTH_LONG
                     ).show()
 
