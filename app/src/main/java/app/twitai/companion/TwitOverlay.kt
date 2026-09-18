@@ -1,222 +1,109 @@
 package app.twitai.companion
 
-import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
-import android.view.Gravity
-import android.view.ViewGroup
-import android.view.WindowManager
-import android.widget.Button
-import android.widget.EditText
-import android.widget.LinearLayout
-import android.widget.ScrollView
-import android.widget.TextView
-import android.widget.Toast
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import android.content.Intent
+import android.os.Bundle
+import android.provider.Settings
+import android.app.AlertDialog
+import androidx.activity.ComponentActivity
+import androidx.lifecycle.lifecycleScope
+import app.twitai.companion.databinding.ActivityMainBinding
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
-object TwitOverlay {
-    private var root: LinearLayout? = null
-    private var windowManager: WindowManager? = null
+class MainActivity : ComponentActivity() {
 
-    fun show(service: TwitAccessibilityService, tweet: String) {
-        remove()
+    private lateinit var binding: ActivityMainBinding
+    private lateinit var auth: AuthManager
 
-        val wm = service.getSystemService(WindowManager::class.java)
-        windowManager = wm
+    private var loginInProgress = false
 
-        val card = LinearLayout(service).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(28, 24, 28, 24)
-            background = GradientDrawable().apply {
-                setColor(Color.rgb(17, 24, 39))
-                cornerRadius = 28f
-            }
-        }
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
 
-        val title = TextView(service).apply {
-            text = "Twit AI"
-            setTextColor(Color.WHITE)
-            textSize = 22f
-        }
+        FirebaseBootstrap.init(this)
 
-        val selected = TextView(service).apply {
-            text = tweet
-            setTextColor(Color.LTGRAY)
-            textSize = 14f
-            maxLines = 5
-            setPadding(0, 12, 0, 12)
-        }
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
 
-        val count = EditText(service).apply {
-            hint = "Replies, default 5"
-            setText("5")
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER
-        }
+        auth = AuthManager(this)
 
-        val minWords = EditText(service).apply {
-            hint = "Minimum words"
-            setText("10")
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER
-        }
+        refreshUi()
 
-        val maxWords = EditText(service).apply {
-            hint = "Maximum words"
-            setText("18")
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER
-        }
+        binding.loginButton.setOnClickListener {
 
-        val tag = EditText(service).apply {
-            hint = "Optional @tag"
-        }
+            if (loginInProgress) return@setOnClickListener
 
-        val generate = Button(service).apply {
-            text = "Generate replies"
-            setOnClickListener {
-                isEnabled = false
-                text = "Generating..."
-                val request = GenerateRequest(
-                    tweet = tweet,
-                    replyCount = count.text.toString().toIntOrNull()?.coerceIn(1, 10) ?: 5,
-                    minWords = minWords.text.toString().toIntOrNull()?.coerceAtLeast(1) ?: 10,
-                    maxWords = maxWords.text.toString().toIntOrNull()?.coerceAtLeast(1) ?: 18,
-                    tone = "balanced",
-                    tag = tag.text.toString(),
-                    language = "auto"
-                )
+            loginInProgress = true
 
-                CoroutineScope(Dispatchers.IO).launch {
-                    val result = ApiClient().generate(request)
-                    withContext(Dispatchers.Main) {
-                        if (result.isSuccess) {
-                            renderReplies(service, result.getOrThrow())
-                        } else {
-                            Toast.makeText(
-                                service,
-                                result.exceptionOrNull()?.message ?: "Generation failed",
-                                Toast.LENGTH_LONG
-                            ).show()
-                            isEnabled = true
-                            text = "Generate replies"
-                        }
-                    }
+            binding.loginButton.isEnabled = false
+            binding.statusText.text = "Opening Google sign-in..."
+
+            lifecycleScope.launch {
+
+                val result = auth.signIn(this@MainActivity)
+
+                loginInProgress = false
+                binding.loginButton.isEnabled = true
+
+                val error = result.exceptionOrNull()
+
+                if (error != null) {
+
+                    val fullError =
+                        error.message
+                            ?: error.toString()
+
+                    binding.statusText.text =
+                        "Google login failed"
+
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("Google Login Error")
+                        .setMessage(fullError)
+                        .setPositiveButton("OK", null)
+                        .show()
+
+                } else {
+
+                    binding.statusText.text =
+                        "Signed in as ${auth.email() ?: "Google account"}"
+
+                    binding.loginButton.text =
+                        "Sign in with another account"
                 }
             }
         }
 
-        val close = Button(service).apply {
-            text = "Close"
-            setOnClickListener { remove() }
-        }
-
-        card.addView(title)
-        card.addView(selected)
-        card.addView(count)
-        card.addView(minWords)
-        card.addView(maxWords)
-        card.addView(tag)
-        card.addView(generate)
-        card.addView(close)
-
-        val params = WindowManager.LayoutParams(
-            (service.resources.displayMetrics.widthPixels * 0.92).toInt(),
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            android.graphics.PixelFormat.TRANSLUCENT
-        )
-        params.gravity = Gravity.CENTER
-        params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
-
-        root = card
-        wm.addView(card, params)
-    }
-
-    private fun renderReplies(service: TwitAccessibilityService, replies: List<String>) {
-        val card = root ?: return
-        card.removeAllViews()
-
-        val title = TextView(service).apply {
-            text = "Generated replies"
-            setTextColor(Color.WHITE)
-            textSize = 22f
-        }
-        card.addView(title)
-
-        val scroll = ScrollView(service)
-        val list = LinearLayout(service).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-
-        replies.forEachIndexed { index, reply ->
-            val box = LinearLayout(service).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(0, 18, 0, 18)
-            }
-
-            val text = TextView(service).apply {
-                text = reply
-                setTextColor(Color.WHITE)
-                textSize = 15f
-            }
-
-            val copy = Button(service).apply {
-                this.text = "Copy"
-                setOnClickListener {
-                    val clipboard = service.getSystemService(android.content.ClipboardManager::class.java)
-                    clipboard.setPrimaryClip(
-                        android.content.ClipData.newPlainText("Twit AI reply", reply)
-                    )
-                    Toast.makeText(service, "Copied", Toast.LENGTH_SHORT).show()
-                }
-            }
-
-            box.addView(text)
-            box.addView(copy)
-            list.addView(box)
-        }
-
-        scroll.addView(list)
-        card.addView(
-            scroll,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
+        binding.accessibilityButton.setOnClickListener {
+            startActivity(
+                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
             )
-        )
-
-        val copyAll = Button(service).apply {
-            text = "Copy all"
-            setOnClickListener {
-                val clipboard = service.getSystemService(android.content.ClipboardManager::class.java)
-                clipboard.setPrimaryClip(
-                    android.content.ClipData.newPlainText(
-                        "Twit AI replies",
-                        replies.joinToString("\n\n")
-                    )
-                )
-                Toast.makeText(service, "All replies copied", Toast.LENGTH_SHORT).show()
-            }
         }
-
-        val close = Button(service).apply {
-            text = "Close"
-            setOnClickListener { remove() }
-        }
-
-        card.addView(copyAll)
-        card.addView(close)
     }
 
-    private fun remove() {
-        root?.let {
-            try {
-                windowManager?.removeView(it)
-            } catch (_: Exception) {}
+    override fun onResume() {
+        super.onResume()
+
+        if (::auth.isInitialized && !loginInProgress) {
+            refreshUi()
         }
-        root = null
-        windowManager = null
+    }
+
+    private fun refreshUi() {
+
+        if (auth.isLoggedIn()) {
+
+            binding.statusText.text =
+                "Signed in as ${auth.email() ?: "Google account"}"
+
+            binding.loginButton.text =
+                "Sign in with another account"
+
+        } else {
+
+            binding.statusText.text =
+                "Not signed in"
+
+            binding.loginButton.text =
+                "Sign in with Google"
+        }
     }
 }
